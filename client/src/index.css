@@ -1,0 +1,146 @@
+/* ==========================================================================
+   Design tokens
+   Reuses the same validated blue as the analytics charts (dataviz skill
+   palette, #2a78d6) as the app's single brand color, so buttons/links/nav
+   and charts read as one cohesive system rather than two different blues.
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  --brand-navy: #14243b;
+  --brand-navy-soft: #1c3350;
+  --brand-primary: #2a78d6;
+  --brand-primary-hover: #1c5cab;
+  --brand-primary-active: #184f95;
+  --brand-primary-tint: #e8f1fc;
+  --brand-primary-focus-ring: rgba(42, 120, 214, 0.25);
+
+  --surface-page: #f5f6f8;
+  --surface-card: #ffffff;
+  --border-subtle: #e3e2dd;
+
+  --text-primary: #16181b;
+  --text-secondary: #52514e;
+  --text-muted: #83817b;
+
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 4px 10px rgba(16, 24, 40, 0.08);
+
+  /* Re-theme Bootstrap's primary from these same tokens (Bootstrap 5.3's
+     documented CSS-variable override pattern - no Sass recompile needed). */
+  --bs-primary: var(--brand-primary);
+  --bs-primary-rgb: 42, 120, 214;
+  --bs-link-color: var(--brand-primary);
+  --bs-link-color-rgb: 42, 120, 214;
+  --bs-link-hover-color: var(--brand-primary-hover);
+  --bs-link-hover-color-rgb: 28, 92, 171;
+  --bs-body-color: var(--text-primary);
+  --bs-border-color: var(--border-subtle);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--surface-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Bootstrap's compiled .btn-primary/.btn-outline-primary/.btn-link bake their
+   hover/active shades from Sass at build time, so re-theming those needs the
+   component-local custom properties re-declared here (not just --bs-primary
+   above, which covers .text-primary/.bg-primary/.border-primary directly). */
+.btn-primary {
+  --bs-btn-bg: var(--brand-primary);
+  --bs-btn-border-color: var(--brand-primary);
+  --bs-btn-hover-bg: var(--brand-primary-hover);
+  --bs-btn-hover-border-color: var(--brand-primary-hover);
+  --bs-btn-active-bg: var(--brand-primary-active);
+  --bs-btn-active-border-color: var(--brand-primary-active);
+  --bs-btn-disabled-bg: var(--brand-primary);
+  --bs-btn-disabled-border-color: var(--brand-primary);
+  --bs-btn-focus-shadow-rgb: 42, 120, 214;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--brand-primary);
+  --bs-btn-border-color: var(--brand-primary);
+  --bs-btn-hover-bg: var(--brand-primary);
+  --bs-btn-hover-border-color: var(--brand-primary);
+  --bs-btn-active-bg: var(--brand-primary-hover);
+  --bs-btn-active-border-color: var(--brand-primary-hover);
+  --bs-btn-focus-shadow-rgb: 42, 120, 214;
+}
+
+.btn {
+  border-radius: var(--radius-control);
+  font-weight: 500;
+}
+
+.form-control,
+.form-select {
+  border-radius: var(--radius-control);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #86b6ef;
+  box-shadow: 0 0 0 0.25rem var(--brand-primary-focus-ring);
+}
+
+.form-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.table > :not(caption) > * > * {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.table thead th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom-width: 1px;
+  white-space: nowrap;
+}
+
+/* Shared "eyebrow" label used above card content throughout the app
+   (e.g. "TODAY", "INVENTORY") - was four repeated utility classes on every
+   page; centralized once here. */
+.section-label {
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
