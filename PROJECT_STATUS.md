@@ -1,11 +1,13 @@
 # PROJECT_STATUS.md
 
-_Last updated: 2026-08-24_
+_Last updated: 2026-08-25_
 
 ## Current Phase
 
 **Phase 10 — Free Production Deployment and Production Readiness**
-Status: **Codebase deployment-ready and fully documented; actual production deployment blocked on account creation that only the project owner can perform.** Researched current (2026) free-tier terms for hosting providers, chose Cloudflare Pages + Render + Neon, fixed one real production bug (missing SPA routing fallback), added a production-safe admin-bootstrap script, verified the production frontend build and production backend startup, and wrote complete step-by-step deployment/backup/troubleshooting instructions in `DEPLOYMENT.md`. What remains — creating free accounts on the three providers, creating a GitHub repository, and clicking through each dashboard's setup — requires the account owner's own credentials and cannot be done on their behalf. Full detail below.
+Status: **Complete and live.** Deployed to Cloudflare Pages (frontend) + Render (backend) + Neon (PostgreSQL), all $0/month. One real production-only bug was found and fixed live during deployment: the session cookie needs `SameSite=None` (not `Lax`) because the frontend and backend are on different domains — `Lax` silently withheld the cookie from cross-site requests, bouncing users back to login right after a successful sign-in. Full detail below.
+
+**Post-launch change (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000) — a real business requirement discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support" below.
 
 ## Completed Phases
 
@@ -63,13 +65,33 @@ Full reasoning and comparison table in `DEPLOYMENT.md` §1.
 
 - **Production frontend build**: `npm run build` in `client/` succeeds cleanly (695KB main bundle, gzipped 207KB — a size *advisory*, not an error; code-splitting was deliberately not added, since it would be unnecessary complexity for a 4–5 user internal tool per the brief's §20).
 - **Production backend startup**: started with `NODE_ENV=production` against a real Postgres connection; `/api/health` returned `{"status":"ok","db":"connected",...}`.
-- **Full test suite**: 153/153 passing, re-run after all changes above.
+- **Full test suite**: 153/153 passing, re-run after all changes above (later 156/156 after the fractional-bundle change below).
+
+## Fractional Bundle Support (post-launch, 2026-08-25)
+
+A real business need surfaced after go-live: shops don't always take a full bundle — e.g. half a Rs. 100 bundle (50 notes) = Rs. 5,000. Bundle quantities on all three denominations now accept partial amounts, in increments of 0.01 (one note out of a 100-note bundle) — no coarser restriction (e.g. halves-only), since a real cash count can land on any note count.
+
+**What changed:**
+- **Database** (new migration `0002_fractional_bundles.sql`): `transactions.bundles_10/50/100`, `transaction_edits.previous_bundles_10/50/100`, and `inventory.bundle_count` all moved from `INTEGER` to `NUMERIC(10,2)`. Existing whole-number data converted losslessly; all existing `CHECK` constraints stayed attached and valid across the type change with no rewrite needed.
+- **A real, subtle bug caught and fixed before it could ship**: `pg`'s default parser returns `NUMERIC` columns as JS strings (to avoid float precision loss on values a double can't represent exactly). The transaction-edit flow reads a transaction's old bundle quantities back from the database and adds them to currently-available inventory (`available + oldBundles`) to compute what would be free after a conceptual "restore." With string values, JS's `+` operator does *string concatenation*, not addition — `"12.50" + "2.50"` becomes `"12.502.50"`, not `15`. This would have silently corrupted inventory math on every edit of a fractional-quantity transaction. Fixed at the root by adding a global `NUMERIC` type parser in `server/src/config/db.js` (parsing to a JS float), matching the same pattern already used for a `DATE` parsing fix from an earlier phase — every numeric value read from the database is now a real JS number everywhere in the app, not just at this one call site.
+- **Validation** (`server/src/controllers/transactionController.js`): `validateBundleQuantity` now accepts any non-negative number in multiples of 0.01, with a generous upper bound (100,000) for the same "clean 400 instead of a raw DB error" reasoning as the earlier `parseId` fix.
+- **Frontend** (`TransactionForm.jsx`): bundle quantity inputs now accept decimals (`step="0.5"` for convenient arrow-key increments, free typing for any valid precision), with a hint label. The live preview and all financial-value display code needed no changes — they already handled arbitrary numbers, not just integers.
+- **No business rule changed**: commission-rate logic (3% only when exclusively Rs. 10, else 1.5%) applies identically to fractional quantities, since it only checks which denominations are present (`> 0`), not whole-number-ness.
+
+**Verified**: 3 new automated tests (fractional create, fractional inventory deduction, and a fractional edit specifically exercising the restore-math bug above) plus a full live HTTP smoke test against a running local server — create → inventory decreases by exactly 0.5 → edit to 1.25 → inventory net-adjusts by exactly -0.75 → delete → inventory restores to exactly the original value — with explicit `typeof` checks confirming every value round-trips as a JSON number, never a string. Full 156-test suite passing.
+
+## Production URLs
+
+- **Frontend**: https://ccms-4k9.pages.dev/
+- **Backend / health check**: https://ccms-v3ov.onrender.com/api/health
+- **Database**: Neon (connection string held privately, not in this repo)
 
 ## Known Issues
 
-**The application has not yet actually been deployed to production.** This is the one item in the Phase 10 brief that could not be completed autonomously, and it's a hard blocker rather than an oversight: deploying requires creating a GitHub repository and pushing this code to it, and creating free accounts on Cloudflare, Render, and Neon — all of which require the account owner's own email, identity, and clicking through each provider's signup/dashboard flow. There is no `gh` CLI or stored credential available in this environment, and no existing git remote or commit history to push from (the repository has been developed locally without a single commit across all 10 phases). None of this can be done on the project owner's behalf without their direct participation.
+None outstanding. For the record, two things surfaced only once real, separate-domain hosting was live (neither was catchable from local dev, where frontend/backend share `localhost`):
 
-**What's ready to go the moment those accounts exist**: every code-level requirement (env config, CORS, secure cookies, health endpoint, graceful shutdown, migration safety, admin bootstrap, SPA routing) is already in place and verified locally; `DEPLOYMENT.md` gives exact commands and dashboard settings for each of the three providers. The remaining work is account creation and following that document, not further development.
+- **Render requires a card on file for identity verification** to create a free-tier web service — this is a real 2026 industry shift from Render's older "no card" reputation, not an oversight in the original research. It's verification-only: the service stays on the Free instance type, no charge unless a paid plan is chosen deliberately. (A detour through Koyeb as a card-free alternative was tried first and abandoned after discovering Koyeb was acquired by Mistral AI in February 2026 and is being repositioned around Mistral's AI/agentic cloud strategy — not a safe long-term host for real business data.)
+- **Cross-domain session cookie, found and fixed same-day**: login succeeded but the very next request lost the session, bouncing the user back to the login page. Cause: `SameSite=Lax` (correct for same-site local dev) is silently withheld by the browser on cross-site requests once frontend and backend are genuinely different domains (`*.pages.dev` vs `*.onrender.com`). Fixed in `server/src/config/session.js` — `SameSite=None` (paired with the existing `Secure` flag) in production, `Lax` still in local dev. Verified via the `Set-Cookie` response header and a real login in the browser.
 
 ## Important Architectural Decisions
 
@@ -81,7 +103,7 @@ Full Phase 0 rationale in `ARCHITECTURE.md` §20. New decisions made this phase:
 
 ## Next Phase
 
-Not yet defined. Once the project owner has created the three provider accounts and a GitHub repository, the remaining Phase 10 work (§15–17: actual deployment, production end-to-end test, production smoke test) can be completed by following `DEPLOYMENT.md`. Awaiting either that, or a Phase 11 brief.
+Not yet defined. Phase 10 is complete and the app is live in production. Awaiting a Phase 11 brief, if any.
 
 ## Local Development
 

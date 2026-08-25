@@ -11,6 +11,19 @@ const env = require('./env');
 // correctly as a bound parameter for DATE columns on the way back in.
 types.setTypeParser(types.builtins.DATE, (value) => value);
 
+// pg's default parser returns NUMERIC columns (money, commission_rate,
+// bundle quantities, SUM() aggregates) as strings, to avoid silently losing
+// precision on values bigger than a JS float can represent exactly. Every
+// value in this schema is a 2-4 decimal-place figure well within float
+// precision, and the codebase was already working around the string default
+// with scattered Number()/toNumber() calls at nearly every read site (money
+// formatting, analytics aggregates, and now fractional bundle-quantity math
+// in transactionService.js, where string values would silently corrupt
+// inventory-restore arithmetic via JS's string-concatenation "+" operator).
+// Parsing centrally here removes an entire class of bug instead of relying
+// on every call site remembering to convert.
+types.setTypeParser(types.builtins.NUMERIC, (value) => parseFloat(value));
+
 const pool = new Pool({
   connectionString: env.databaseUrl,
   ssl: env.dbSsl ? { rejectUnauthorized: false } : false,

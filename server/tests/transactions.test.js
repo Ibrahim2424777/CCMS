@@ -176,14 +176,28 @@ describe('POST /api/transactions - validation (master context section 22)', () =
     expect(res.status).toBe(400);
   });
 
-  test('rejects non-integer quantities', async () => {
+  test('rejects a quantity finer than a single note (not a multiple of 0.01)', async () => {
     const agent = await staffAgent();
     const res = await agent.post('/api/transactions').send({
       shop_id: testShopId,
       transaction_date: '2026-08-10',
-      bundles_10: 1.5,
+      bundles_10: 1.005,
     });
     expect(res.status).toBe(400);
+  });
+
+  test('accepts a partial (fractional) bundle - e.g. half a bundle', async () => {
+    const agent = await staffAgent();
+    const res = trackCreated(
+      await agent.post('/api/transactions').send({
+        shop_id: testShopId,
+        transaction_date: '2026-08-10',
+        bundles_100: 0.5, // half a Rs. 100 bundle = 50 notes = Rs. 5,000
+      })
+    );
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.bundles_100)).toBe(0.5);
+    expect(Number(res.body.data.total_change_value)).toBe(5000);
   });
 
   test('rejects a missing shop', async () => {
@@ -289,6 +303,22 @@ describe('POST /api/transactions - inventory integration (master context section
 
     const after = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 10');
     expect(after.rows[0].bundle_count).toBe(before.rows[0].bundle_count - 7);
+  });
+
+  test('inventory decreases by exactly a fractional (partial-bundle) quantity', async () => {
+    const agent = await staffAgent();
+    const before = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 50');
+
+    trackCreated(
+      await agent.post('/api/transactions').send({
+        shop_id: testShopId,
+        transaction_date: '2026-08-10',
+        bundles_50: 2.5,
+      }).expect(201)
+    );
+
+    const after = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 50');
+    expect(after.rows[0].bundle_count).toBe(before.rows[0].bundle_count - 2.5);
   });
 
   test('rejects the transaction outright when inventory is insufficient, and creates nothing', async () => {
@@ -477,6 +507,27 @@ describe('PUT /api/transactions/:id - editing (master context section 14)', () =
 
     const after = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 10');
     expect(after.rows[0].bundle_count).toBe(before.rows[0].bundle_count + 6);
+  });
+
+  test('editing a fractional-bundle transaction restores and re-deducts correctly (regression: DB-read bundle quantities must be numbers, not strings, or the restore math silently string-concatenates instead of adding)', async () => {
+    const agent = await staffAgent();
+    const created = trackCreated(
+      await agent
+        .post('/api/transactions')
+        .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_100: 1.5 })
+        .expect(201)
+    );
+    const before = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 100');
+
+    const editRes = await agent
+      .put(`/api/transactions/${created.body.data.id}`)
+      .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_100: 0.5 });
+    expect(editRes.status).toBe(200);
+    expect(Number(editRes.body.data.total_change_value)).toBe(5000); // 0.5 * 10,000
+
+    // restore 1.5, deduct 0.5 -> net +1
+    const after = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 100');
+    expect(after.rows[0].bundle_count).toBe(before.rows[0].bundle_count + 1);
   });
 
   test('an edit requiring more inventory than is available is rejected, leaving the original transaction and inventory untouched', async () => {

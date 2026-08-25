@@ -5,15 +5,29 @@ const asyncHandler = require('../utils/asyncHandler');
 const { isValidDateString, todayInPakistan } = require('../utils/dateUtils');
 const parseId = require('../utils/parseId');
 
+const MAX_BUNDLE_QUANTITY = 100000; // absurdly generous ceiling for a 4-5 person shop, well under NUMERIC(10,2)'s actual range
+
+// A bundle can now be partial (e.g. 0.5 = half a bundle = 50 notes), but a
+// note itself is still atomic - only increments of 0.01 (one note out of a
+// 100-note bundle) are valid, matching the NUMERIC(10,2) column precision.
 function validateBundleQuantity(value, label) {
   if (value === undefined || value === null) return 0;
-  if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new HttpError(400, `${label} must be a whole number.`, { code: 'VALIDATION_ERROR' });
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new HttpError(400, `${label} must be a number.`, { code: 'VALIDATION_ERROR' });
   }
   if (value < 0) {
     throw new HttpError(400, `${label} cannot be negative.`, { code: 'VALIDATION_ERROR' });
   }
-  return value;
+  if (value > MAX_BUNDLE_QUANTITY) {
+    throw new HttpError(400, `${label} is unrealistically large.`, { code: 'VALIDATION_ERROR' });
+  }
+  const scaledNotes = Math.round(value * 100);
+  if (Math.abs(scaledNotes - value * 100) > 1e-6) {
+    throw new HttpError(400, `${label} must be in increments of 0.01 (a whole number of notes).`, {
+      code: 'VALIDATION_ERROR',
+    });
+  }
+  return scaledNotes / 100;
 }
 
 // Shared by create (POST) and edit (PUT, full-replace semantics - the client

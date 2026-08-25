@@ -26,10 +26,11 @@ function BundleField({ label, value, onChange }) {
         type="number"
         className="form-control"
         min="0"
-        step="1"
+        step="0.5"
         value={value}
-        onChange={(e) => onChange(Math.max(0, parseInt(e.target.value, 10) || 0))}
+        onChange={(e) => onChange(Math.max(0, parseFloat(e.target.value) || 0))}
       />
+      <div className="form-text">e.g. 0.5 = half a bundle</div>
     </div>
   );
 }

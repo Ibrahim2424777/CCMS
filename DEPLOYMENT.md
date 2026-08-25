@@ -6,6 +6,22 @@ for what the application does and `README.md` for local development.
 
 ---
 
+## 0. Deployment Progress (updated 2026-08-25)
+
+**Deployment is complete and live.**
+
+- [x] **Git repository**: `https://github.com/Ibrahim2424777/CCMS` (branch `main`).
+- [x] **Database (Neon)**: migrated (`0001_init.sql`, `0002_fractional_bundles.sql`), first admin user bootstrapped via `db:seed-admin`.
+- [x] **Backend (Render)**: live at `https://ccms-v3ov.onrender.com` (card verification completed — see §1, verification-only, no charge).
+- [x] **Frontend (Cloudflare Pages)**: live at `https://ccms-4k9.pages.dev/`.
+- [x] **CORS_ORIGIN**: set on Render to the Cloudflare Pages URL, confirmed via a live CORS preflight check.
+- [x] **Session cookie cross-domain fix**: found live (login succeeded but the next request lost the session) and fixed — see §12 note below.
+- [x] **End-to-end production test**: login, dashboard, and the full transaction lifecycle confirmed working in the browser against production.
+
+The Neon connection string is not repeated in this file (it's a live credential); it's already configured in the Render dashboard's environment variables.
+
+---
+
 ## 1. Chosen Architecture
 
 ```text
@@ -27,12 +43,17 @@ Neon   (managed Postgres, $0/month)
 | Component | Chosen | Why |
 |---|---|---|
 | Frontend | **Cloudflare Pages** | Unlimited bandwidth on the free tier, commercial use explicitly allowed (unlike Vercel's Hobby tier — see below), HTTPS by default, deploys straight from GitHub, no credit card required. |
-| Backend | **Render** | Genuine free web service tier (no credit card), deploys from GitHub, environment variables/secrets in the dashboard, a real `PORT`/HTTPS setup out of the box. The one cost is that it sleeps after 15 minutes of inactivity (see §7, Free-Tier Limitations) — acceptable for a 4–5 person internal tool where an occasional 30–60s cold start on the first request of the day is a non-issue. |
+| Backend | **Render** | Genuine free web service instance type (0.1 CPU/512MB, sleeps after 15 min idle — see §7), deploys from GitHub, environment variables/secrets in the dashboard, a real `PORT`/HTTPS setup out of the box. **Update, confirmed live during this phase's deployment attempt**: Render now requires a card on file at signup for identity/anti-abuse verification — this was not the case when Render first built its free-tier reputation, and third-party "no card required" articles about it are now out of date. Per Render's own billing model, this is a verification hold, not a charge: you remain on the Free instance type and are not billed unless you deliberately choose a paid plan. Still the strongest available option after evaluating the alternatives below. |
 | Database | **Neon** | Free tier **never expires** and needs no credit card — unlike Render's free Postgres, which is hard-deleted 30 days after creation and is therefore unusable for data that must persist (this application's entire purpose). Neon's compute scales to zero after 5 minutes idle and resumes automatically on the next query, with no manual "un-pause" step required. |
 
 **Why not the obvious alternatives:**
 - **Vercel** was ruled out for the frontend: its free Hobby plan's Terms of Service explicitly restrict it to non-commercial personal use. CCMS is a real internal business tool, so deploying it on Vercel Hobby would be a ToS violation from day one.
 - **Railway** was ruled out for the backend: as of this phase, Railway no longer has a genuine permanent free tier — it's a one-time $5 trial credit, then a paid plan. The phase brief explicitly says to only use Railway if a genuinely free option currently exists; it does not.
+- **Koyeb** was tried and then ruled out for the backend during this phase's actual deployment attempt: Koyeb was acquired by Mistral AI in February 2026, and its dashboard now displays "Koyeb is joining Mistral! Stay tuned for a revamped Agentic experience" — signaling the general-purpose web-hosting product is being repositioned around Mistral's AI/agentic cloud strategy rather than continuing as a stable target for ordinary web apps. Not a safe bet for hosting real financial data long-term, free tier or not.
+- **Fly.io** was ruled out: no longer has a real free tier as of 2026 — a short trial (2 VM-hours or 7 days) before a card is required and billing starts.
+- **Zeabur** was ruled out: its own pricing page shows the real free plan is community-support-only (1 server); the usable tier is "$5/mo after a 14-day free trial" — the same trial-then-paid pattern as Railway/Fly.io, not genuinely free.
+- **Northflank** was considered: also requires card verification for its best (always-on) free tier, so it offers no advantage over Render here.
+- **Back4App Containers** was considered but not used: its own documentation doesn't state whether a card is required or give concrete resource limits, making it unverifiable enough to not be worth the risk over the better-known Render.
 - **Render's own Postgres** was ruled out for the database specifically because of its 30-day hard expiration on the free tier — unacceptable for financial/inventory records that must persist indefinitely.
 
 ### Reasonable alternatives (if a provider's free tier changes)
@@ -45,7 +66,7 @@ Neon   (managed Postgres, $0/month)
 ## 2. Prerequisites
 
 - A GitHub account and a repository containing this codebase (see §3).
-- Free accounts on: [Neon](https://neon.tech), [Render](https://render.com), [Cloudflare](https://pages.cloudflare.com) — no credit card required for any of them at the free tier.
+- Free accounts on: [Neon](https://neon.tech) (no credit card), [Render](https://render.com) (requires a card for identity verification, but you stay on the Free instance type — see §1), [Cloudflare](https://pages.cloudflare.com) (no credit card).
 
 ---
 
@@ -237,7 +258,8 @@ DATABASE_URL="<neon connection string>" DB_SSL=true NODE_ENV=production npm run 
 | First request of the day is very slow, then fine | Render free tier woke from sleep | Expected — see §7 |
 | Refreshing the browser on `/transactions` (or any non-home page) shows a 404 | `client/public/_redirects` missing from the deployed build, or Cloudflare Pages build output directory misconfigured | Confirm `_redirects` exists in the repo under `client/public/` and that the Pages project's output directory is `dist` |
 | Can't log in on a fresh deployment — no accounts exist | Expected on a freshly-migrated database | Run the `db:seed-admin` bootstrap script (§4) |
-| Session doesn't persist / logs out immediately after login in production | `SESSION_SECRET` not set, or cookies blocked because the frontend and backend are on different origins without HTTPS | Confirm `SESSION_SECRET` is set on Render; both Cloudflare Pages and Render serve HTTPS by default, which `secure: true` cookies require in production |
+| Login succeeds but the next request bounces back to the login page | **Hit this live during deployment, already fixed in code.** The session cookie's `SameSite` attribute was `Lax`, which browsers withhold on cross-site requests — and a Cloudflare Pages frontend + Render backend are genuinely different domains, unlike local dev where both are `localhost`. `server/src/config/session.js` now sets `SameSite=None` (paired with `Secure`) in production. If this ever recurs, check the `Set-Cookie` header on a login response — it must read `SameSite=None; Secure`. |
+| Session doesn't persist / logs out immediately after login in production | `SESSION_SECRET` not set | Confirm `SESSION_SECRET` is set on Render; both Cloudflare Pages and Render serve HTTPS by default, which `secure: true` cookies require in production |
 
 ---
 
