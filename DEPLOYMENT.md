@@ -25,18 +25,16 @@ The Neon connection string is not repeated in this file (it's a live credential)
 ## 1. Chosen Architecture
 
 ```text
-React (built as static files)
-       ↓
-Cloudflare Pages   (frontend hosting, $0/month)
-
-Node.js / Express
-       ↓
-Render   (backend web service, $0/month)
-
-PostgreSQL
-       ↓
-Neon   (managed Postgres, $0/month)
+Browser
+   ↓  (one origin: ccms.pages.dev)
+Cloudflare Pages   (React static files + a Function proxying /api/* )
+   ↓  (server-side, not subject to browser CORS/cookie rules)
+Render   (Node.js / Express backend, $0/month)
+   ↓
+Neon   (managed PostgreSQL, $0/month)
 ```
+
+**The Cloudflare Pages Function (`client/functions/api/[[path]].js`) is load-bearing, not optional.** It was added after a real production bug: with the frontend and backend on genuinely different domains, the session cookie is a cross-domain ("third-party") cookie from the browser's point of view. `SameSite=None; Secure` alone wasn't enough — Safari blocks third-party cookies by default regardless of `SameSite`, and Chrome/Firefox increasingly do too. One person's account worked fine (their specific browser/device combination happened not to block it); a friend's did not, with the exact same "login succeeds, then immediately bounces back to the login page" symptom. The Function proxies every `/api/*` call server-side to Render, so the browser only ever talks to one origin (`*.pages.dev`) and the cookie becomes an ordinary first-party cookie with no special-casing needed in any browser.
 
 ### Why this combination
 
@@ -168,13 +166,15 @@ This creates exactly one `ADMIN` user and does nothing (safely, exit 0) if any u
    - **Build output directory**: `dist`
 4. Add a build-time environment variable:
    ```text
-   VITE_API_BASE_URL=https://ccms-backend.onrender.com/api
+   VITE_API_BASE_URL=/api
    ```
-   (use your actual Render URL from §5 step 5). Vite bakes this into the compiled JS at build time, so it must be set before deploying, not after.
+   **A relative path, not the backend's own URL.** `client/functions/api/[[path]].js` (a Cloudflare Pages Function, already in the repo) proxies every `/api/*` request server-side to the real Render backend, so the browser only ever talks to one origin. This isn't a style preference - it's required for the app to work reliably across browsers. See §10's first troubleshooting row for why.
 5. Deploy. Cloudflare gives you a URL like `https://ccms.pages.dev`.
-6. **Go back to Render** and set `CORS_ORIGIN` to this exact URL (no trailing slash), then let Render redeploy (or trigger a manual redeploy). Until this is set correctly, the frontend's login request will be blocked by CORS.
+6. **Go back to Render** and set `CORS_ORIGIN` to this exact URL (no trailing slash), then let Render redeploy (or trigger a manual redeploy). This is defense-in-depth for anyone hitting the Render URL directly - the proxied browser traffic doesn't actually depend on it, since a same-origin request through the proxy was never subject to CORS in the first place.
 
-The `client/public/_redirects` file (`/* /index.html 200`) is already in the repo — this is required because the app uses client-side routing (`BrowserRouter`); without it, refreshing the browser on any page other than the homepage (e.g. `/transactions`) would 404 on static hosting.
+The `client/public/_redirects` file (`/* /index.html 200`) is already in the repo — this is required because the app uses client-side routing (`BrowserRouter`); without it, refreshing the browser on any page other than the homepage (e.g. `/transactions`) would 404 on static hosting. `_redirects` only applies to static asset requests that don't match a Function - `/api/*` is always handled by the Function first.
+
+**If you ever change the Render backend's URL**, update `BACKEND_ORIGIN` at the top of `client/functions/api/[[path]].js` - it's a hardcoded constant there, not an environment variable (a Pages Function's env vars are a separate mechanism from Vite's build-time ones, and one fixed string didn't justify a second configuration path).
 
 ---
 
@@ -258,7 +258,7 @@ DATABASE_URL="<neon connection string>" DB_SSL=true NODE_ENV=production npm run 
 | First request of the day is very slow, then fine | Render free tier woke from sleep | Expected — see §7 |
 | Refreshing the browser on `/transactions` (or any non-home page) shows a 404 | `client/public/_redirects` missing from the deployed build, or Cloudflare Pages build output directory misconfigured | Confirm `_redirects` exists in the repo under `client/public/` and that the Pages project's output directory is `dist` |
 | Can't log in on a fresh deployment — no accounts exist | Expected on a freshly-migrated database | Run the `db:seed-admin` bootstrap script (§4) |
-| Login succeeds but the next request bounces back to the login page | **Hit this live during deployment, already fixed in code.** The session cookie's `SameSite` attribute was `Lax`, which browsers withhold on cross-site requests — and a Cloudflare Pages frontend + Render backend are genuinely different domains, unlike local dev where both are `localhost`. `server/src/config/session.js` now sets `SameSite=None` (paired with `Secure`) in production. If this ever recurs, check the `Set-Cookie` header on a login response — it must read `SameSite=None; Secure`. |
+| Login succeeds but the next request bounces back to the login page - possibly for some users/browsers but not others | **Hit this live during deployment (twice), already fixed in code both times.** First found: the session cookie's `SameSite` was `Lax`, which browsers withhold on cross-site requests since the frontend and backend are on different domains — fixed by setting `SameSite=None; Secure` in production (`server/src/config/session.js`). That alone wasn't sufficient, though: it worked on some devices/browsers but a friend's account failed the same way on theirs - modern browsers (Safari by default, increasingly Chrome/Firefox too) block or partition genuinely cross-domain ("third-party") cookies regardless of `SameSite`. The real fix was routing the frontend's API calls through `client/functions/api/[[path]].js`, a Cloudflare Pages Function that proxies `/api/*` to Render server-side - the browser then only ever talks to one origin, and the cookie is an ordinary first-party cookie in every browser. If this ever recurs: confirm `VITE_API_BASE_URL=/api` (a relative path, not the Render URL) was actually set at build time, and that the Function is deployed (check the Cloudflare Pages dashboard's Functions tab, or that `/api/health` on the pages.dev URL returns the backend's health response). |
 | Session doesn't persist / logs out immediately after login in production | `SESSION_SECRET` not set | Confirm `SESSION_SECRET` is set on Render; both Cloudflare Pages and Render serve HTTPS by default, which `secure: true` cookies require in production |
 
 ---

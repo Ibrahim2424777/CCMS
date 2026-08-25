@@ -7,7 +7,7 @@ _Last updated: 2026-08-25_
 **Phase 10 — Free Production Deployment and Production Readiness**
 Status: **Complete and live.** Deployed to Cloudflare Pages (frontend) + Render (backend) + Neon (PostgreSQL), all $0/month. One real production-only bug was found and fixed live during deployment: the session cookie needs `SameSite=None` (not `Lax`) because the frontend and backend are on different domains — `Lax` silently withheld the cookie from cross-site requests, bouncing users back to login right after a successful sign-in. Full detail below.
 
-**Post-launch changes (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000); manual inventory add/remove (admin-only) since inventory otherwise starts at zero with no way to stock it; and an admin-only manual profit override for cases where the auto-calculated commission doesn't apply (e.g. a negotiated one-off rate). All three are real business requirements discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support", "Manual Inventory Adjustment", and "Manual Profit Override" below.
+**Post-launch changes (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000); manual inventory add/remove (admin-only) since inventory otherwise starts at zero with no way to stock it; an admin-only manual profit override for cases where the auto-calculated commission doesn't apply (e.g. a negotiated one-off rate); and a second, more fundamental fix to the cross-domain login issue — the `SameSite=None` fix alone worked on some browsers/devices but not others (a friend's account failed on their laptop with the same symptom). See "Fractional Bundle Support", "Manual Inventory Adjustment", "Manual Profit Override", and "Cross-Browser Login Fix (API Proxy)" below.
 
 ## Completed Phases
 
@@ -108,18 +108,26 @@ Profit is still auto-calculated by default (`total_change_value × commission_ra
 
 **Verified**: 7 new automated tests (STAFF blocked on both create and edit, admin override applied correctly with the right `amount_collected` and unaffected `commission_rate`, omitting the field still auto-calculates as before, negative/non-numeric rejection) plus a full live HTTP walkthrough — STAFF blocked, admin creates with an override, `GET` confirms the persisted state, and editing without the `profit` field correctly reverts a transaction from overridden back to auto-calculated. Full 171-test suite passing. Production frontend build re-verified clean.
 
+## Cross-Browser Login Fix (API Proxy) (post-launch, 2026-08-25)
+
+The original `SameSite=None; Secure` cookie fix (see Known Issues below) worked on the devices tested at the time but was **not actually sufficient** — a friend's account hit the identical "login succeeds, then immediately bounces back to the login page" symptom on their own laptop. Root cause: the frontend (`*.pages.dev`) and backend (`*.onrender.com`) are genuinely different domains, so the session cookie is a cross-domain ("third-party") cookie from the browser's point of view — and modern browsers increasingly block or partition third-party cookies by default *regardless of the `SameSite` attribute*. Safari has done this by default for years; Chrome and Firefox are progressively doing the same. It happened to work on the devices tried first purely because those specific browser/privacy configurations weren't blocking it yet, not because the underlying problem was actually fixed.
+
+**The real fix**: `client/functions/api/[[path]].js`, a Cloudflare Pages Function that proxies every `/api/*` request server-side to the Render backend. The browser now only ever talks to one origin (`*.pages.dev`) for both the page and the API, so the session cookie is an ordinary first-party cookie in every browser — no `SameSite`/third-party-cookie special-casing involved at all. `VITE_API_BASE_URL` changed from the backend's absolute URL to a relative `/api` path so the frontend calls through the proxy instead of the backend directly. `CORS_ORIGIN` on Render is kept as defense-in-depth for anyone hitting the Render URL directly, but the actual browser traffic through the proxy was never subject to CORS in the first place (a same-origin browser request isn't, and the proxy's own server-to-server call to Render isn't either — CORS is a browser enforcement mechanism, not a network-level restriction).
+
+**Verified**: `/api/health` returns the real backend response when hit through the pages.dev URL (confirming the proxy forwards correctly); a full login → dashboard → logout cycle confirmed working through the proxied URL.
+
 ## Production URLs
 
 - **Frontend**: https://ccms-4k9.pages.dev/
-- **Backend / health check**: https://ccms-v3ov.onrender.com/api/health
+- **Backend / health check**: https://ccms-v3ov.onrender.com/api/health (also reachable, proxied, at https://ccms-4k9.pages.dev/api/health)
 - **Database**: Neon (connection string held privately, not in this repo)
 
 ## Known Issues
 
-None outstanding. For the record, two things surfaced only once real, separate-domain hosting was live (neither was catchable from local dev, where frontend/backend share `localhost`):
+None outstanding.
 
 - **Render requires a card on file for identity verification** to create a free-tier web service — this is a real 2026 industry shift from Render's older "no card" reputation, not an oversight in the original research. It's verification-only: the service stays on the Free instance type, no charge unless a paid plan is chosen deliberately. (A detour through Koyeb as a card-free alternative was tried first and abandoned after discovering Koyeb was acquired by Mistral AI in February 2026 and is being repositioned around Mistral's AI/agentic cloud strategy — not a safe long-term host for real business data.)
-- **Cross-domain session cookie, found and fixed same-day**: login succeeded but the very next request lost the session, bouncing the user back to the login page. Cause: `SameSite=Lax` (correct for same-site local dev) is silently withheld by the browser on cross-site requests once frontend and backend are genuinely different domains (`*.pages.dev` vs `*.onrender.com`). Fixed in `server/src/config/session.js` — `SameSite=None` (paired with the existing `Secure` flag) in production, `Lax` still in local dev. Verified via the `Set-Cookie` response header and a real login in the browser.
+- **Cross-domain session cookie — found twice, fixed twice.** First pass: `SameSite=Lax` (correct for same-site local dev) is silently withheld by the browser on cross-site requests once frontend and backend are genuinely different domains — fixed with `SameSite=None; Secure` in production. That fix turned out to be necessary but not sufficient (see "Cross-Browser Login Fix" above for the full story and the actual resolution: a same-origin API proxy).
 
 ## Important Architectural Decisions
 
