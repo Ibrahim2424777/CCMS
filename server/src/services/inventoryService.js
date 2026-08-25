@@ -1,5 +1,7 @@
 const { pool } = require('../config/db');
 const { BUNDLE_VALUES, NOTES_PER_BUNDLE } = require('./businessLogic');
+const withTransaction = require('../utils/withTransaction');
+const HttpError = require('../utils/httpError');
 
 const BUNDLE_TYPES = [10, 50, 100];
 
@@ -62,4 +64,33 @@ async function adjustInventory(client, bundleCounts, sign) {
   }
 }
 
-module.exports = { getSnapshot, lockInventoryRows, adjustInventory, BUNDLE_TYPES };
+// Manual stock correction (e.g. an initial stock count, or a physical
+// recount) - independent of the transaction pipeline. Locks the single row
+// so it can never race a concurrent transaction or another manual adjustment
+// touching the same bundle type (same FOR UPDATE pattern as
+// lockInventoryRows, just for one row outside of a transaction-creation
+// flow).
+async function manualAdjust(bundleType, delta) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query('SELECT bundle_count FROM inventory WHERE bundle_type = $1 FOR UPDATE', [
+      bundleType,
+    ]);
+    const current = rows[0].bundle_count;
+    const next = current + delta;
+    if (next < 0) {
+      throw new HttpError(
+        409,
+        `Cannot remove ${Math.abs(delta)} bundles - only ${current} currently in stock.`,
+        { code: 'INSUFFICIENT_INVENTORY' }
+      );
+    }
+
+    const { rows: updated } = await client.query(
+      'UPDATE inventory SET bundle_count = $1 WHERE bundle_type = $2 RETURNING *',
+      [next, bundleType]
+    );
+    return updated[0];
+  });
+}
+
+module.exports = { getSnapshot, lockInventoryRows, adjustInventory, manualAdjust, BUNDLE_TYPES };

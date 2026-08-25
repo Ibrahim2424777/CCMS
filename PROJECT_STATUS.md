@@ -7,7 +7,7 @@ _Last updated: 2026-08-25_
 **Phase 10 — Free Production Deployment and Production Readiness**
 Status: **Complete and live.** Deployed to Cloudflare Pages (frontend) + Render (backend) + Neon (PostgreSQL), all $0/month. One real production-only bug was found and fixed live during deployment: the session cookie needs `SameSite=None` (not `Lax`) because the frontend and backend are on different domains — `Lax` silently withheld the cookie from cross-site requests, bouncing users back to login right after a successful sign-in. Full detail below.
 
-**Post-launch change (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000) — a real business requirement discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support" below.
+**Post-launch changes (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000), and manual inventory add/remove (admin-only) since inventory otherwise starts at zero with no way to stock it. Both are real business requirements discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support" and "Manual Inventory Adjustment" below.
 
 ## Completed Phases
 
@@ -79,6 +79,19 @@ A real business need surfaced after go-live: shops don't always take a full bund
 - **No business rule changed**: commission-rate logic (3% only when exclusively Rs. 10, else 1.5%) applies identically to fractional quantities, since it only checks which denominations are present (`> 0`), not whole-number-ness.
 
 **Verified**: 3 new automated tests (fractional create, fractional inventory deduction, and a fractional edit specifically exercising the restore-math bug above) plus a full live HTTP smoke test against a running local server — create → inventory decreases by exactly 0.5 → edit to 1.25 → inventory net-adjusts by exactly -0.75 → delete → inventory restores to exactly the original value — with explicit `typeof` checks confirming every value round-trips as a JSON number, never a string. Full 156-test suite passing.
+
+## Manual Inventory Adjustment (post-launch, 2026-08-25)
+
+Inventory previously only moved via the transaction pipeline (deduct on create, restore on edit/delete) — starting at zero with no way to actually stock it. Admins can now directly add or remove stock per denomination (e.g. an initial stock count, or correcting after a physical recount).
+
+**What changed:**
+- **New endpoint**: `POST /api/inventory/adjust` (`{ bundle_type, delta }`, signed — positive adds, negative removes), **ADMIN-only** (`requireRole('ADMIN')`, same pattern as user management and shop deletion) — a STAFF request gets a clean 403. This was a deliberate default, not dictated by the request; STAFF can still create/edit/delete transactions as before, which is the only inventory-changing action they need day-to-day.
+- **Locking**: reuses the exact `SELECT ... FOR UPDATE` pattern already used for transaction-driven inventory changes, inside the same `withTransaction` helper, so a manual adjustment can never race a concurrent transaction (or another manual adjustment) touching the same bundle type.
+- **Validation**: same 0.01 (one-note) precision rule as bundle quantities elsewhere, a non-zero delta required, and a clean 409 (not a raw DB constraint error) if a removal would take stock negative — inventory is left untouched on rejection.
+- **Frontend** (`Inventory.jsx`): each bundle card gets a small "Adjust stock" control, visible only to admins (`useAuth().isAdmin`) — a quantity field plus "+ Add" / "− Remove" buttons, with a toast confirming the result and the page refetching afterward so the displayed count is always the server's real value, never assumed from the client-side delta.
+- **No audit trail added.** Transaction edits are logged to `transaction_edits` because financial transactions specifically need that history; a manual stock correction is a simpler, less frequent, admin-only action, and adding a parallel audit table wasn't requested — this can be added later if it turns out to be wanted.
+
+**Verified**: 8 new automated tests (auth required, admin-only, invalid bundle_type, zero delta, sub-note-precision delta, successful add, successful remove, and insufficient-stock rejection leaving inventory untouched) plus a live HTTP check confirming a STAFF login is blocked with 403 while an ADMIN login can add and remove stock correctly, including a fractional amount. Full 164-test suite passing. Production frontend build re-verified clean after the new JSX.
 
 ## Production URLs
 
