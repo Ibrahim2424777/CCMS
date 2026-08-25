@@ -23,7 +23,18 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     secure: env.nodeEnv === 'production', // secure cookies require HTTPS, unavailable on local http://
-    sameSite: 'lax',
+    // The production frontend (Cloudflare Pages) and backend (Render) are on
+    // different registrable domains - a genuinely cross-site request from the
+    // browser's point of view, even with CORS configured correctly. Browsers
+    // withhold a SameSite=Lax cookie from cross-site XHR/fetch calls, so the
+    // session cookie set at login never comes back on the next request,
+    // silently bouncing the user back to the login page. SameSite=None (only
+    // valid paired with Secure, which is already on in production) is
+    // required for this specific split-domain deployment shape. Local dev
+    // keeps 'lax' since localhost:5173 and localhost:5000 count as the same
+    // site there, and 'none' without 'secure' would be rejected outright by
+    // the browser over local http://.
+    sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
     maxAge: env.sessionMaxAgeMs,
   },
 });
