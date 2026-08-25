@@ -7,7 +7,7 @@ _Last updated: 2026-08-25_
 **Phase 10 — Free Production Deployment and Production Readiness**
 Status: **Complete and live.** Deployed to Cloudflare Pages (frontend) + Render (backend) + Neon (PostgreSQL), all $0/month. One real production-only bug was found and fixed live during deployment: the session cookie needs `SameSite=None` (not `Lax`) because the frontend and backend are on different domains — `Lax` silently withheld the cookie from cross-site requests, bouncing users back to login right after a successful sign-in. Full detail below.
 
-**Post-launch changes (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000), and manual inventory add/remove (admin-only) since inventory otherwise starts at zero with no way to stock it. Both are real business requirements discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support" and "Manual Inventory Adjustment" below.
+**Post-launch changes (2026-08-25)**: added support for partial/fractional bundle quantities (e.g. half a Rs. 100 bundle = Rs. 5,000); manual inventory add/remove (admin-only) since inventory otherwise starts at zero with no way to stock it; and an admin-only manual profit override for cases where the auto-calculated commission doesn't apply (e.g. a negotiated one-off rate). All three are real business requirements discovered after go-live, not part of the original Phase 10 scope. See "Fractional Bundle Support", "Manual Inventory Adjustment", and "Manual Profit Override" below.
 
 ## Completed Phases
 
@@ -92,6 +92,21 @@ Inventory previously only moved via the transaction pipeline (deduct on create, 
 - **No audit trail added.** Transaction edits are logged to `transaction_edits` because financial transactions specifically need that history; a manual stock correction is a simpler, less frequent, admin-only action, and adding a parallel audit table wasn't requested — this can be added later if it turns out to be wanted.
 
 **Verified**: 8 new automated tests (auth required, admin-only, invalid bundle_type, zero delta, sub-note-precision delta, successful add, successful remove, and insufficient-stock rejection leaving inventory untouched) plus a live HTTP check confirming a STAFF login is blocked with 403 while an ADMIN login can add and remove stock correctly, including a fractional amount. Full 164-test suite passing. Production frontend build re-verified clean after the new JSX.
+
+## Manual Profit Override (post-launch, 2026-08-25)
+
+Profit is still auto-calculated by default (`total_change_value × commission_rate`), but an admin can now override it on a specific transaction, at create or edit time — e.g. a negotiated one-off rate that doesn't fit the standard 1.5%/3% commission rule.
+
+**What changed:**
+- **New column**: `transactions.profit_overridden BOOLEAN NOT NULL DEFAULT FALSE` (migration `0003_profit_override.sql`). Without this flag, an overridden value would be visually indistinguishable from a normal auto-calculated one, which is the kind of thing that erodes trust in a financial tool the first time someone notices the numbers don't add up and can't tell why.
+- **`commission_rate` is unaffected by an override** — it keeps recording which standard tier (1.5% or 3%) the bundle mix falls into, as a classification of the transaction, not a promise that `profit = total_change_value × commission_rate`. This keeps existing analytics that group by commission rate meaningful even when a transaction's profit was manually adjusted.
+- **`amount_collected` is always `total_change_value + profit`**, using whichever profit is actually stored — the existing `chk_amount_collected_math` constraint needed no change and stays satisfied either way.
+- **Reuses the existing create/edit endpoints** (`POST /api/transactions`, `PUT /api/transactions/:id`) rather than adding a separate endpoint — an optional `profit` field in the request body, validated and applied only for an admin. **A STAFF request that includes it is rejected outright with 403**, not silently ignored, so a client bug can never fail open into applying an override nobody authorized.
+- **Frontend** (`TransactionForm.jsx`): an "Override profit (admin only)" checkbox, unchecked by default even when editing a normal transaction — deliberately opt-in on every save, so an admin editing bundle quantities on an unrelated field can never accidentally leave a stale profit value in place that no longer matches the new calculation. When editing a transaction that *is* already overridden, the checkbox and value are correctly pre-populated from the loaded data. Enabling it pre-fills the current auto-calculated value as a starting point to adjust from. Un-checking it and saving reverts the transaction to auto-calculated (confirmed live, not just assumed).
+- **Visibility**: an "edited" badge next to Profit in the Transaction History table and a full "Manually overridden by an admin" note in the View modal, so the override is always visible, never hidden inside a value that looks routine.
+- **No change to `transaction_edits`.** It already records `previous_profit` as part of every edit's audit snapshot, which is sufficient history without adding a second, overlapping audit mechanism just for this.
+
+**Verified**: 7 new automated tests (STAFF blocked on both create and edit, admin override applied correctly with the right `amount_collected` and unaffected `commission_rate`, omitting the field still auto-calculates as before, negative/non-numeric rejection) plus a full live HTTP walkthrough — STAFF blocked, admin creates with an override, `GET` confirms the persisted state, and editing without the `profit` field correctly reverts a transaction from overridden back to auto-calculated. Full 171-test suite passing. Production frontend build re-verified clean.
 
 ## Production URLs
 

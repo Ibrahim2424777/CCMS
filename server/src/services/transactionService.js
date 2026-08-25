@@ -51,7 +51,20 @@ async function recordEdit(client, existing, editType, editedBy) {
 
 // Creates a transaction and deducts inventory atomically (MASTER CONTEXT
 // sections 12-13): if inventory is insufficient, nothing is written at all.
-async function createTransaction({ shop_id, transaction_date, bundles_10, bundles_50, bundles_100, created_by }) {
+// profitOverride (admin-only, validated by the controller) replaces the
+// auto-calculated profit when provided; commission_rate still always
+// records which standard tier the bundle mix falls into, and
+// amount_collected is always total_change_value + the profit actually
+// stored, whichever it is - chk_amount_collected_math stays satisfied.
+async function createTransaction({
+  shop_id,
+  transaction_date,
+  bundles_10,
+  bundles_50,
+  bundles_100,
+  profitOverride,
+  created_by,
+}) {
   const bundleCounts = { bundles_10, bundles_50, bundles_100 };
   const touchedTypes = bundleTypesUsedBy(bundleCounts);
 
@@ -63,14 +76,15 @@ async function createTransaction({ shop_id, transaction_date, bundles_10, bundle
 
     const totalChangeValue = calculateBundleValue(bundleCounts);
     const commissionRate = calculateCommissionRate(bundleCounts);
-    const profit = calculateProfit(totalChangeValue, commissionRate);
+    const profitOverridden = profitOverride !== null && profitOverride !== undefined;
+    const profit = profitOverridden ? profitOverride : calculateProfit(totalChangeValue, commissionRate);
     const amountCollected = calculateAmountCollected(totalChangeValue, profit);
 
     const { rows } = await client.query(
       `INSERT INTO transactions
         (shop_id, transaction_date, bundles_10, bundles_50, bundles_100,
-         total_change_value, commission_rate, profit, amount_collected, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         total_change_value, commission_rate, profit, profit_overridden, amount_collected, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
         shop_id,
@@ -81,6 +95,7 @@ async function createTransaction({ shop_id, transaction_date, bundles_10, bundle
         totalChangeValue,
         commissionRate,
         profit,
+        profitOverridden,
         amountCollected,
         created_by,
       ]
@@ -101,7 +116,10 @@ async function createTransaction({ shop_id, transaction_date, bundles_10, bundle
 // deduct), which is mathematically identical but avoids two writes where one
 // suffices - the *validation* is still explicitly computed against the
 // restored-availability figure, matching the conceptual order in the brief.
-async function updateTransaction(id, { shop_id, transaction_date, bundles_10, bundles_50, bundles_100, updated_by }) {
+async function updateTransaction(
+  id,
+  { shop_id, transaction_date, bundles_10, bundles_50, bundles_100, profitOverride, updated_by }
+) {
   const newBundles = { bundles_10, bundles_50, bundles_100 };
 
   return withTransaction(async (client) => {
@@ -154,10 +172,14 @@ async function updateTransaction(id, { shop_id, transaction_date, bundles_10, bu
       }
     }
 
-    // Steps 4-7: recalculate.
+    // Steps 4-7: recalculate. profitOverride (admin-only, validated by the
+    // controller) replaces the auto-calculated profit when provided;
+    // amount_collected is always derived from whichever profit is actually
+    // stored, so chk_amount_collected_math stays satisfied either way.
     const totalChangeValue = calculateBundleValue(newBundles);
     const commissionRate = calculateCommissionRate(newBundles);
-    const profit = calculateProfit(totalChangeValue, commissionRate);
+    const profitOverridden = profitOverride !== null && profitOverride !== undefined;
+    const profit = profitOverridden ? profitOverride : calculateProfit(totalChangeValue, commissionRate);
     const amountCollected = calculateAmountCollected(totalChangeValue, profit);
 
     await recordEdit(client, existing, 'UPDATE', updated_by);
@@ -165,8 +187,9 @@ async function updateTransaction(id, { shop_id, transaction_date, bundles_10, bu
     const { rows } = await client.query(
       `UPDATE transactions SET
          shop_id = $1, transaction_date = $2, bundles_10 = $3, bundles_50 = $4, bundles_100 = $5,
-         total_change_value = $6, commission_rate = $7, profit = $8, amount_collected = $9, updated_by = $10
-       WHERE id = $11
+         total_change_value = $6, commission_rate = $7, profit = $8, profit_overridden = $9,
+         amount_collected = $10, updated_by = $11
+       WHERE id = $12
        RETURNING *`,
       [
         shop_id,
@@ -177,6 +200,7 @@ async function updateTransaction(id, { shop_id, transaction_date, bundles_10, bu
         totalChangeValue,
         commissionRate,
         profit,
+        profitOverridden,
         amountCollected,
         updated_by,
         id,

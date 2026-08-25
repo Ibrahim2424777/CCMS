@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ShopAutocomplete } from '../../components/shops/ShopAutocomplete';
 import * as transactionsApi from '../../api/transactionsApi';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
   calculateBundleValue,
@@ -48,6 +49,7 @@ export default function TransactionForm() {
   const { id } = useParams();
   const isEditMode = Boolean(id);
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { showToast } = useToast();
 
   const [shop, setShop] = useState(null);
@@ -55,6 +57,12 @@ export default function TransactionForm() {
   const [bundles, setBundles] = useState(INITIAL_BUNDLES);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Admin-only manual profit override. Off by default - the field is only
+  // ever sent to the server when explicitly enabled, so nobody can
+  // accidentally leave a stale override value in place while just editing
+  // bundle quantities.
+  const [overrideProfit, setOverrideProfit] = useState(false);
+  const [profitOverrideValue, setProfitOverrideValue] = useState('');
   // Bumped on every reset to force ShopAutocomplete to remount rather than
   // just receive a new `value` prop - its internal text input is otherwise
   // uncontrolled-ish (initialized once from `value`, then user-typed), so a
@@ -75,6 +83,10 @@ export default function TransactionForm() {
         setShop({ id: tx.shop_id, shop_name: tx.shop_name });
         setDate(tx.transaction_date);
         setBundles({ bundles_10: tx.bundles_10, bundles_50: tx.bundles_50, bundles_100: tx.bundles_100 });
+        if (tx.profit_overridden) {
+          setOverrideProfit(true);
+          setProfitOverrideValue(String(tx.profit));
+        }
         setFormKey((k) => k + 1); // ensure ShopAutocomplete mounts with the loaded shop already set
       })
       .catch(() => {
@@ -90,16 +102,30 @@ export default function TransactionForm() {
 
   const changeValue = calculateBundleValue(bundles);
   const commissionRate = calculateCommissionRate(bundles);
-  const profit = calculateProfit(changeValue, commissionRate);
+  const calculatedProfit = calculateProfit(changeValue, commissionRate);
+  const profit =
+    isAdmin && overrideProfit && profitOverrideValue !== '' ? parseFloat(profitOverrideValue) || 0 : calculatedProfit;
   const amountCollected = calculateAmountCollected(changeValue, profit);
   const hasAnyBundles = bundles.bundles_10 > 0 || bundles.bundles_50 > 0 || bundles.bundles_100 > 0;
 
   const setBundle = (key, value) => setBundles((prev) => ({ ...prev, [key]: value }));
 
+  const toggleOverrideProfit = () => {
+    setOverrideProfit((prev) => {
+      const next = !prev;
+      // Pre-fill with the current auto-calculated value as a starting point
+      // to tweak from, rather than making the admin compute it from scratch.
+      if (next) setProfitOverrideValue(String(calculatedProfit));
+      return next;
+    });
+  };
+
   const resetForm = () => {
     setShop(null);
     setDate(todayLocalDate());
     setBundles(INITIAL_BUNDLES);
+    setOverrideProfit(false);
+    setProfitOverrideValue('');
     setFormKey((k) => k + 1);
   };
 
@@ -117,6 +143,9 @@ export default function TransactionForm() {
     }
 
     const payload = { shop_id: shop.id, transaction_date: date, ...bundles };
+    if (isAdmin && overrideProfit) {
+      payload.profit = parseFloat(profitOverrideValue) || 0;
+    }
 
     setSubmitting(true);
     try {
@@ -211,6 +240,39 @@ export default function TransactionForm() {
                     />
                   </div>
 
+                  {isAdmin && (
+                    <div className="mb-4 pb-1 border-top pt-3">
+                      <div className="form-check">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          id="overrideProfit"
+                          checked={overrideProfit}
+                          onChange={toggleOverrideProfit}
+                        />
+                        <label className="form-check-label" htmlFor="overrideProfit">
+                          Override profit (admin only)
+                        </label>
+                      </div>
+                      {overrideProfit && (
+                        <div className="mt-2">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min="0"
+                            step="0.01"
+                            value={profitOverrideValue}
+                            onChange={(e) => setProfitOverrideValue(e.target.value)}
+                          />
+                          <div className="form-text">
+                            Replaces the auto-calculated profit (Rs. {calculatedProfit.toLocaleString()}) for this
+                            transaction. Amount collected is recalculated from this value.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
                     {submitting ? (
                       <>
@@ -234,7 +296,10 @@ export default function TransactionForm() {
                 <p className="section-label mb-3">Preview</p>
                 <PreviewRow label="Change Value" value={`Rs. ${changeValue.toLocaleString()}`} />
                 <PreviewRow label="Commission" value={`${(commissionRate * 100).toFixed(2)}%`} />
-                <PreviewRow label="Profit" value={`Rs. ${profit.toLocaleString()}`} />
+                <PreviewRow
+                  label={isAdmin && overrideProfit ? 'Profit (Overridden)' : 'Profit'}
+                  value={`Rs. ${profit.toLocaleString()}`}
+                />
                 <PreviewRow label="Amount Collected" value={`Rs. ${amountCollected.toLocaleString()}`} emphasize />
                 <p className="text-muted small mt-3 mb-0">
                   This preview is calculated locally for convenience. The saved values are always calculated and

@@ -30,10 +30,33 @@ function validateBundleQuantity(value, label) {
   return scaledNotes / 100;
 }
 
+const MAX_PROFIT_OVERRIDE = 100000000; // sanity ceiling, well under NUMERIC(12,2)'s actual range
+
+// Only an admin may override profit - a STAFF request that includes a
+// `profit` field is rejected outright rather than silently ignored, so a
+// client bug or a misunderstanding of the API never fails open. Returns
+// null when no override is requested (auto-calculation applies as before).
+function validateProfitOverride(value, isAdmin) {
+  if (value === undefined || value === null) return null;
+  if (!isAdmin) {
+    throw new HttpError(403, 'Only an admin can override the calculated profit.', { code: 'FORBIDDEN' });
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new HttpError(400, 'Profit override must be a number.', { code: 'VALIDATION_ERROR' });
+  }
+  if (value < 0) {
+    throw new HttpError(400, 'Profit override cannot be negative.', { code: 'VALIDATION_ERROR' });
+  }
+  if (value > MAX_PROFIT_OVERRIDE) {
+    throw new HttpError(400, 'Profit override is unrealistically large.', { code: 'VALIDATION_ERROR' });
+  }
+  return Math.round((value + Number.EPSILON) * 100) / 100; // money precision, 2 decimals
+}
+
 // Shared by create (POST) and edit (PUT, full-replace semantics - the client
 // sends the complete desired state, same as create, rather than a partial
 // PATCH). Validates the request body and resolves the target shop.
-async function resolveTransactionInput(body) {
+async function resolveTransactionInput(body, isAdmin) {
   const shopId = parseId(body.shop_id, 'shop selection');
 
   const bundles_10 = validateBundleQuantity(body.bundles_10, 'Rs. 10 bundle quantity');
@@ -51,18 +74,19 @@ async function resolveTransactionInput(body) {
     throw new HttpError(400, 'Transaction date cannot be in the future.', { code: 'VALIDATION_ERROR' });
   }
 
+  const profitOverride = validateProfitOverride(body.profit, isAdmin);
+
   const shop = await shopService.getShopById(shopId);
   if (!shop) {
     throw new HttpError(404, 'Shop not found.', { code: 'SHOP_NOT_FOUND' });
   }
 
-  return { shopId, shop, transaction_date: body.transaction_date, bundles_10, bundles_50, bundles_100 };
+  return { shopId, shop, transaction_date: body.transaction_date, bundles_10, bundles_50, bundles_100, profitOverride };
 }
 
 const create = asyncHandler(async (req, res) => {
-  const { shopId, shop, transaction_date, bundles_10, bundles_50, bundles_100 } = await resolveTransactionInput(
-    req.body || {}
-  );
+  const { shopId, shop, transaction_date, bundles_10, bundles_50, bundles_100, profitOverride } =
+    await resolveTransactionInput(req.body || {}, req.user.role === 'ADMIN');
 
   let transaction;
   try {
@@ -72,6 +96,7 @@ const create = asyncHandler(async (req, res) => {
       bundles_10,
       bundles_50,
       bundles_100,
+      profitOverride,
       created_by: req.user.id,
     });
   } catch (err) {
@@ -86,9 +111,8 @@ const create = asyncHandler(async (req, res) => {
 
 const update = asyncHandler(async (req, res) => {
   const id = parseId(req.params.id, 'transaction id');
-  const { shopId, shop, transaction_date, bundles_10, bundles_50, bundles_100 } = await resolveTransactionInput(
-    req.body || {}
-  );
+  const { shopId, shop, transaction_date, bundles_10, bundles_50, bundles_100, profitOverride } =
+    await resolveTransactionInput(req.body || {}, req.user.role === 'ADMIN');
 
   let transaction;
   try {
@@ -98,6 +122,7 @@ const update = asyncHandler(async (req, res) => {
       bundles_10,
       bundles_50,
       bundles_100,
+      profitOverride,
       updated_by: req.user.id,
     });
   } catch (err) {

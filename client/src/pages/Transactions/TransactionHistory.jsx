@@ -234,7 +234,17 @@ export default function TransactionHistory() {
                       <td className="text-end table-hide-sm">{t.bundles_100}</td>
                       <td className="text-end text-nowrap table-hide-sm">{formatMoney(t.total_change_value)}</td>
                       <td className="text-end table-hide-sm">{formatPercent(t.commission_rate)}</td>
-                      <td className="text-end text-nowrap table-hide-sm">{formatMoney(t.profit)}</td>
+                      <td className="text-end text-nowrap table-hide-sm">
+                        {formatMoney(t.profit)}
+                        {t.profit_overridden && (
+                          <span
+                            className="badge bg-warning-subtle text-warning-emphasis ms-1"
+                            title="Manually overridden by an admin"
+                          >
+                            edited
+                          </span>
+                        )}
+                      </td>
                       <td className="text-end text-nowrap fw-semibold">{formatMoney(t.amount_collected)}</td>
                       <td className="table-hide-sm">{t.created_by_name}</td>
                       <td className="text-nowrap">
@@ -320,7 +330,14 @@ export default function TransactionHistory() {
             <dt className="col-5">Commission</dt>
             <dd className="col-7">{formatPercent(viewing.commission_rate)}</dd>
             <dt className="col-5">Profit</dt>
-            <dd className="col-7">{formatMoney(viewing.profit)}</dd>
+            <dd className="col-7">
+              {formatMoney(viewing.profit)}
+              {viewing.profit_overridden && (
+                <span className="badge bg-warning-subtle text-warning-emphasis ms-2">
+                  Manually overridden by an admin
+                </span>
+              )}
+            </dd>
             <dt className="col-5">Amount Collected</dt>
             <dd className="col-7 fw-semibold">{formatMoney(viewing.amount_collected)}</dd>
             <dt className="col-5">Created By</dt>

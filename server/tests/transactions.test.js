@@ -6,8 +6,10 @@ const { pool } = require('../src/config/db');
 const PASSWORD = 'TestPassword123!';
 const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const STAFF_EMAIL = `tx-test-staff-${RUN_ID}@ccms.local`;
+const ADMIN_EMAIL = `tx-test-admin-${RUN_ID}@ccms.local`;
 
 let staffId;
+let adminId;
 let testShopId;
 const createdShopIds = [];
 const createdTransactionIds = [];
@@ -30,6 +32,11 @@ beforeAll(async () => {
     [STAFF_EMAIL, hash]
   );
   staffId = staff.rows[0].id;
+  const admin = await pool.query(
+    `INSERT INTO users (name,email,password_hash,role) VALUES ('Tx Test Admin',$1,$2,'ADMIN') RETURNING id`,
+    [ADMIN_EMAIL, hash]
+  );
+  adminId = admin.rows[0].id;
 
   testShopId = await createTestShop(uniqueShopName('Tx Test Shop'));
 
@@ -55,13 +62,19 @@ afterAll(async () => {
       row.bundle_type,
     ]);
   }
-  await pool.query('DELETE FROM users WHERE id = $1', [staffId]);
+  await pool.query('DELETE FROM users WHERE id IN ($1, $2)', [staffId, adminId]);
   await pool.end();
 });
 
 async function staffAgent() {
   const agent = request.agent(app);
   await agent.post('/api/auth/login').send({ email: STAFF_EMAIL, password: PASSWORD }).expect(200);
+  return agent;
+}
+
+async function adminAgent() {
+  const agent = request.agent(app);
+  await agent.post('/api/auth/login').send({ email: ADMIN_EMAIL, password: PASSWORD }).expect(200);
   return agent;
 }
 
@@ -593,6 +606,107 @@ describe('PUT /api/transactions/:id - editing (master context section 14)', () =
       .put('/api/transactions/9999999')
       .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_10: 1 });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Admin profit override', () => {
+  test('a STAFF create request including profit is rejected outright, not silently ignored', async () => {
+    const agent = await staffAgent();
+    const res = await agent.post('/api/transactions').send({
+      shop_id: testShopId,
+      transaction_date: '2026-08-10',
+      bundles_10: 1,
+      profit: 999,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test('a STAFF edit request including profit is rejected outright', async () => {
+    const agent = await staffAgent();
+    const created = trackCreated(
+      await agent
+        .post('/api/transactions')
+        .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_10: 1 })
+        .expect(201)
+    );
+
+    const res = await agent
+      .put(`/api/transactions/${created.body.data.id}`)
+      .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_10: 1, profit: 999 });
+    expect(res.status).toBe(403);
+  });
+
+  test('an ADMIN can create a transaction with a manually overridden profit', async () => {
+    const agent = await adminAgent();
+    const res = trackCreated(
+      await agent.post('/api/transactions').send({
+        shop_id: testShopId,
+        transaction_date: '2026-08-10',
+        bundles_10: 1, // auto-calculated would be 1,000 @ 3% = 30
+        profit: 500, // deliberately far from the auto-calculated value
+      })
+    );
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.profit)).toBe(500);
+    expect(res.body.data.profit_overridden).toBe(true);
+    // amount_collected must still equal total_change_value + the profit actually stored
+    expect(Number(res.body.data.amount_collected)).toBe(1500);
+    // commission_rate keeps classifying the bundle mix (Rs.10-only -> 3%),
+    // independent of the overridden profit not matching that rate's math
+    expect(Number(res.body.data.commission_rate)).toBe(0.03);
+  });
+
+  test('an ADMIN can override profit on an edit of an existing transaction', async () => {
+    const agent = await adminAgent();
+    const created = trackCreated(
+      await agent
+        .post('/api/transactions')
+        .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_50: 1 }) // auto profit = 75
+        .expect(201)
+    );
+    expect(created.body.data.profit_overridden).toBe(false);
+
+    const editRes = await agent
+      .put(`/api/transactions/${created.body.data.id}`)
+      .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_50: 1, profit: 1000 });
+    expect(editRes.status).toBe(200);
+    expect(Number(editRes.body.data.profit)).toBe(1000);
+    expect(editRes.body.data.profit_overridden).toBe(true);
+    expect(Number(editRes.body.data.amount_collected)).toBe(6000); // 5,000 + 1,000
+  });
+
+  test('omitting profit still auto-calculates as before, for both ADMIN and STAFF', async () => {
+    const agent = await adminAgent();
+    const res = trackCreated(
+      await agent
+        .post('/api/transactions')
+        .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_10: 2 })
+        .expect(201)
+    );
+    expect(res.body.data.profit_overridden).toBe(false);
+    expect(Number(res.body.data.profit)).toBe(60); // 2,000 @ 3%
+  });
+
+  test('rejects a negative profit override', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post('/api/transactions').send({
+      shop_id: testShopId,
+      transaction_date: '2026-08-10',
+      bundles_10: 1,
+      profit: -5,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('rejects a non-numeric profit override', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post('/api/transactions').send({
+      shop_id: testShopId,
+      transaction_date: '2026-08-10',
+      bundles_10: 1,
+      profit: 'a lot',
+    });
+    expect(res.status).toBe(400);
   });
 });
 
