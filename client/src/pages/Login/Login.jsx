@@ -33,11 +33,16 @@ export default function Login() {
 
   return (
     <div className="centered-shell d-flex align-items-center justify-content-center min-vh-100">
-      <div className="card shadow-sm login-card">
+      <div className="card login-card">
+        <div className="login-watermark" aria-hidden="true">
+          Rs
+        </div>
         <div className="card-body p-4 p-md-5">
-          <div className="text-center mb-4">
-            <p className="text-uppercase text-muted small fw-semibold mb-1">Cash Change Management System</p>
-            <h1 className="h4 mb-0">Sign in</h1>
+          <div className="mb-4">
+            <p className="login-eyebrow mb-2">Cash Change Management System</p>
+            <h1 className="login-title mb-0">
+              Sign <em>in</em>
+            </h1>
           </div>
 
           {error && (

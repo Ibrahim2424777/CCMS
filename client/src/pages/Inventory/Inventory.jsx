@@ -55,7 +55,7 @@ function AdjustControl({ bundleType, onAdjust, busy }) {
 function BundleCard({ bundleType, bundleCount, noteCount, value, isAdmin, onAdjust, busy }) {
   return (
     <div className="col-12 col-md-4">
-      <div className="card shadow-sm h-100">
+      <div className={`card shadow-sm h-100 bundle-card denom-${bundleType}`} data-denom={bundleType}>
         <div className="card-body">
           <p className="section-label mb-3">Rs. {bundleType} Bundles</p>
           <p className="display-6 mb-0">{formatNumber(bundleCount)}</p>

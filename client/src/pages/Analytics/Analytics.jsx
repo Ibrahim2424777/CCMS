@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as analyticsApi from '../../api/analyticsApi';
 
-// Single-hue blue (validated for chart use, dataviz skill palette) - every
-// chart on this page plots one measure at a time, so a second categorical
-// hue is never needed; identity comes from the axis labels + card title.
-const CHART_COLOR = '#2a78d6';
-const GRID_COLOR = '#e1e0d9';
-const AXIS_COLOR = '#c3c2b7';
-const TICK_STYLE = { fill: '#898781', fontSize: 12 };
+// Single-hue currency-ink green (validated as a single-series chart color on
+// the card surface, dataviz validator) - every chart on this page plots one
+// measure at a time, so a second categorical hue is never needed; identity
+// comes from the axis labels + card title.
+const CHART_COLOR = '#13805a';
+const GRID_COLOR = '#e4d9c1';
+const AXIS_COLOR = '#cdbd9a';
+const TICK_STYLE = { fill: '#736a55', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' };
+const TOOLTIP_STYLE = { fontSize: 13, background: '#fffdf8', border: '1px solid #cdbd9a', borderRadius: 6 };
 
 const RANGE_OPTIONS = [
   { value: 'today', label: 'Today' },
@@ -199,7 +201,7 @@ export default function Analytics() {
               {hasTrendData ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={summary.trend.points} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke={GRID_COLOR} vertical={false} />
+                    <CartesianGrid stroke={GRID_COLOR} strokeDasharray="2 4" vertical={false} />
                     <XAxis
                       dataKey="period"
                       tickFormatter={(v) => formatPeriodTick(v, summary.trend.groupBy)}
@@ -214,13 +216,13 @@ export default function Analytics() {
                       tickLine={false}
                       width={70}
                     />
-                    <Tooltip formatter={(value) => [formatMoney(value), 'Profit']} labelFormatter={formatDate} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [formatMoney(value), 'Profit']} labelFormatter={formatDate} />
                     <Line
                       type="monotone"
                       dataKey="profit"
                       stroke={CHART_COLOR}
                       strokeWidth={2}
-                      dot={{ r: 4, fill: CHART_COLOR, strokeWidth: 2, stroke: '#fcfcfb' }}
+                      dot={{ r: 4, fill: CHART_COLOR, strokeWidth: 2, stroke: '#fffdf8' }}
                       activeDot={{ r: 5 }}
                     />
                   </LineChart>
@@ -234,7 +236,7 @@ export default function Analytics() {
               {hasTrendData ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={summary.trend.points} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke={GRID_COLOR} vertical={false} />
+                    <CartesianGrid stroke={GRID_COLOR} strokeDasharray="2 4" vertical={false} />
                     <XAxis
                       dataKey="period"
                       tickFormatter={(v) => formatPeriodTick(v, summary.trend.groupBy)}
@@ -249,7 +251,7 @@ export default function Analytics() {
                       tickLine={false}
                       width={70}
                     />
-                    <Tooltip formatter={(value) => [formatMoney(value), 'Change Provided']} labelFormatter={formatDate} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [formatMoney(value), 'Change Provided']} labelFormatter={formatDate} />
                     <Bar dataKey="change" fill={CHART_COLOR} radius={[4, 4, 0, 0]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -265,10 +267,11 @@ export default function Analytics() {
                     data={summary.bundleDistribution.map((b) => ({ ...b, label: `Rs. ${b.bundleType}` }))}
                     margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                   >
-                    <CartesianGrid stroke={GRID_COLOR} vertical={false} />
+                    <CartesianGrid stroke={GRID_COLOR} strokeDasharray="2 4" vertical={false} />
                     <XAxis dataKey="label" tick={TICK_STYLE} axisLine={{ stroke: AXIS_COLOR }} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} width={50} allowDecimals={false} />
                     <Tooltip
+                      contentStyle={TOOLTIP_STYLE}
                       formatter={(value, name) => [value.toLocaleString(), name === 'count' ? 'Bundles' : name]}
                     />
                     <Bar dataKey="count" name="Bundles" fill={CHART_COLOR} radius={[4, 4, 0, 0]} maxBarSize={64} />
@@ -287,7 +290,7 @@ export default function Analytics() {
                     layout="vertical"
                     margin={{ top: 8, right: 24, left: 8, bottom: 0 }}
                   >
-                    <CartesianGrid stroke={GRID_COLOR} horizontal={false} />
+                    <CartesianGrid stroke={GRID_COLOR} strokeDasharray="2 4" horizontal={false} />
                     <XAxis type="number" tick={TICK_STYLE} axisLine={{ stroke: AXIS_COLOR }} tickLine={false} allowDecimals={false} />
                     <YAxis
                       type="category"
@@ -297,7 +300,7 @@ export default function Analytics() {
                       tickLine={false}
                       width={110}
                     />
-                    <Tooltip formatter={(value) => [value.toLocaleString(), 'Transactions']} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [value.toLocaleString(), 'Transactions']} />
                     <Bar dataKey="transactions" fill={CHART_COLOR} radius={[0, 4, 4, 0]} maxBarSize={20} />
                   </BarChart>
                 </ResponsiveContainer>

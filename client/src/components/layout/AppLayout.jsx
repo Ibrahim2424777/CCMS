@@ -34,7 +34,10 @@ export function AppLayout() {
     <div className="d-flex flex-column min-vh-100 app-bg">
       <nav className="app-navbar navbar navbar-dark px-3 px-md-4 py-2">
         <div className="d-flex w-100 align-items-center flex-wrap">
-          <span className="navbar-brand mb-0 h6 me-auto me-lg-4">Cash Change Management System</span>
+          <NavLink to="/" className="brand-lockup navbar-brand mb-0 me-auto me-lg-4">
+            <span className="brand-mark">CCMS</span>
+            <span className="brand-name">Cash Change Management</span>
+          </NavLink>
 
           <button
             type="button"
@@ -74,7 +77,11 @@ export function AppLayout() {
         </div>
       </nav>
       <main className="flex-grow-1 p-3 p-md-4">
-        <Outlet />
+        {/* Keyed by path so each navigation remounts the stage and replays
+            the staggered page-load reveal (index.css, "Motion"). */}
+        <div className="page-stage" key={location.pathname}>
+          <Outlet />
+        </div>
       </main>
     </div>
   );

@@ -4,7 +4,11 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import * as analyticsApi from '../../api/analyticsApi';
 import { useAuth } from '../../context/AuthContext';
 
-const TREND_LINE_COLOR = '#2a78d6'; // validated single-series blue, see dataviz skill palette
+// Currency-ink green, validated as a single-series chart color on the card
+// surface (dataviz validator); grid/axis/ticks use the ledger-paper rules.
+const TREND_LINE_COLOR = '#13805a';
+const TICK_STYLE = { fill: '#736a55', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' };
+const TOOLTIP_STYLE = { fontSize: 13, background: '#fffdf8', border: '1px solid #cdbd9a', borderRadius: 6 };
 
 function formatMoney(n) {
   return `Rs. ${Number(n).toLocaleString()}`;
@@ -64,19 +68,16 @@ function InventorySummary({ inventory }) {
             View Details
           </Link>
         </div>
-        <div className="row text-center">
-          <div className="col-6 col-md-3">
-            <p className="h5 mb-0">{byType[10] ?? 0}</p>
-            <p className="text-muted small mb-0">Rs.10 bundles</p>
-          </div>
-          <div className="col-6 col-md-3">
-            <p className="h5 mb-0">{byType[50] ?? 0}</p>
-            <p className="text-muted small mb-0">Rs.50 bundles</p>
-          </div>
-          <div className="col-6 col-md-3">
-            <p className="h5 mb-0">{byType[100] ?? 0}</p>
-            <p className="text-muted small mb-0">Rs.100 bundles</p>
-          </div>
+        <div className="row gy-3 text-center">
+          {[10, 50, 100].map((type) => (
+            <div key={type} className={`col-6 col-md-3 denom-${type}`}>
+              <p className="h5 mb-0">{byType[type] ?? 0}</p>
+              <p className="text-muted small mb-0">
+                <span className="denom-dot" aria-hidden="true" />
+                Rs.{type} bundles
+              </p>
+            </div>
+          ))}
           <div className="col-6 col-md-3">
             <p className="h5 mb-0">{formatMoney(inventory.totals.value)}</p>
             <p className="text-muted small mb-0">Total Value</p>
@@ -133,17 +134,17 @@ function ProfitTrendChart({ data }) {
         <p className="section-label mb-3">Profit Trend &mdash; Last 7 Days</p>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="#e1e0d9" vertical={false} />
+            <CartesianGrid stroke="#e4d9c1" strokeDasharray="2 4" vertical={false} />
             <XAxis
               dataKey="date"
               tickFormatter={formatShortDate}
-              tick={{ fill: '#898781', fontSize: 12 }}
-              axisLine={{ stroke: '#c3c2b7' }}
+              tick={TICK_STYLE}
+              axisLine={{ stroke: '#cdbd9a' }}
               tickLine={false}
             />
             <YAxis
               tickFormatter={(v) => `Rs.${Number(v).toLocaleString()}`}
-              tick={{ fill: '#898781', fontSize: 12 }}
+              tick={TICK_STYLE}
               axisLine={false}
               tickLine={false}
               width={70}
@@ -151,14 +152,14 @@ function ProfitTrendChart({ data }) {
             <Tooltip
               formatter={(value) => [formatMoney(value), 'Profit']}
               labelFormatter={(label) => formatDate(label)}
-              contentStyle={{ fontSize: 13 }}
+              contentStyle={TOOLTIP_STYLE}
             />
             <Line
               type="monotone"
               dataKey="profit"
               stroke={TREND_LINE_COLOR}
               strokeWidth={2}
-              dot={{ r: 4, fill: TREND_LINE_COLOR, strokeWidth: 2, stroke: '#fcfcfb' }}
+              dot={{ r: 4, fill: TREND_LINE_COLOR, strokeWidth: 2, stroke: '#fffdf8' }}
               activeDot={{ r: 5 }}
             />
           </LineChart>

@@ -1,36 +1,178 @@
-.centered-shell,
 .app-bg {
-  background-color: var(--surface-page);
+  background: transparent;
+}
+
+/* ---- Login: a banknote on an ink-green field ---------------------------- */
+
+.centered-shell {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem 1rem;
+  background-color: var(--ink-900);
+  /* Two offset sets of concentric rings interfere into a guilloché moiré -
+     the engraved security line-work printed on banknotes. */
+  background-image: radial-gradient(ellipse 70% 60% at 50% 45%, rgba(224, 162, 27, 0.14), transparent 70%),
+    repeating-radial-gradient(circle at 12% 30%, transparent 0 9px, rgba(255, 255, 255, 0.045) 9px 10px),
+    repeating-radial-gradient(circle at 88% 75%, transparent 0 9px, rgba(255, 255, 255, 0.045) 9px 10px);
 }
 
 .login-card {
+  position: relative;
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   border: none;
-  box-shadow: var(--shadow-card-hover);
+  background-color: var(--paper-card);
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(224, 162, 27, 0.4);
+  animation: rise-in 0.7s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
+  overflow: hidden;
+}
+
+/* Engraved double border, inset like the frame on a note. */
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid var(--rule-strong);
+  outline: 1px solid var(--rule);
+  outline-offset: 3px;
+  border-radius: 0.3rem;
+  pointer-events: none;
+}
+
+.login-watermark {
+  position: absolute;
+  right: -0.5rem;
+  bottom: -2.6rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 11rem;
+  line-height: 1;
+  color: var(--ink-800);
+  opacity: 0.05;
+  pointer-events: none;
+  user-select: none;
+  font-variation-settings: 'opsz' 144;
+}
+
+.login-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--marigold-deep);
+  animation: rise-in 0.6s 0.15s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
+}
+
+.login-title {
+  font-size: 3.4rem;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  color: var(--ink-900);
+  font-variation-settings: 'opsz' 144, 'SOFT' 40;
+  animation: rise-in 0.6s 0.25s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
+}
+
+.login-title em {
+  font-weight: 200;
+  color: var(--ink-600);
+}
+
+.login-card form {
+  position: relative;
+  animation: rise-in 0.6s 0.35s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
 }
 
 /* ---- Navigation ---------------------------------------------------- */
 
 .app-navbar {
-  background-color: var(--brand-navy);
+  position: relative;
+  background-color: var(--ink-900);
+  background-image: repeating-radial-gradient(circle at 0% 120%, transparent 0 7px, rgba(255, 255, 255, 0.04) 7px 8px),
+    repeating-radial-gradient(circle at 100% -20%, transparent 0 7px, rgba(255, 255, 255, 0.04) 7px 8px);
+  /* Gold double rule along the bottom edge, like a note's border print. */
+  box-shadow: inset 0 -3px 0 var(--marigold), inset 0 -5px 0 var(--ink-950), inset 0 -6px 0 rgba(224, 162, 27, 0.5);
+  padding-bottom: 0.85rem !important;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  color: #fff;
+  text-decoration: none;
+}
+
+.brand-lockup:hover {
+  color: #fff;
+}
+
+.brand-mark {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.6rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--marigold);
+  font-variation-settings: 'opsz' 144;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 250;
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: nowrap;
 }
 
 .app-navbar .nav-link {
-  color: rgba(255, 255, 255, 0.72);
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.66);
   border-radius: var(--radius-control);
   padding: 0.5rem 0.85rem;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+.app-navbar .nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0.85rem;
+  right: 0.85rem;
+  bottom: 0.2rem;
+  height: 2px;
+  background: var(--marigold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
 .app-navbar .nav-link:hover {
   color: #fff;
-  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-navbar .nav-link:hover::after {
+  transform: scaleX(0.4);
 }
 
 .app-navbar .nav-link.active {
-  color: #fff;
-  background-color: var(--brand-primary);
+  color: var(--marigold);
+}
+
+.app-navbar .nav-link.active::after {
+  transform: scaleX(1);
+}
+
+.app-navbar-user .badge {
+  background-color: rgba(224, 162, 27, 0.16) !important;
+  color: var(--marigold) !important;
+  box-shadow: inset 0 0 0 1px rgba(224, 162, 27, 0.45);
 }
 
 .app-navbar-toggler {
@@ -68,10 +210,66 @@
     padding: 0.65rem 0.75rem;
   }
 
+  .app-navbar-links .nav-link::after {
+    left: 0.75rem;
+    right: auto;
+    width: 2rem;
+  }
+
   .app-navbar-user {
     display: flex !important;
     padding: 0.5rem 0.75rem 0;
   }
+}
+
+@media (max-width: 400px) {
+  .brand-name {
+    display: none;
+  }
+}
+
+/* ---- Denominations: each bundle type wears its real note's color ------- */
+
+.denom-10 { --denom: var(--denom-10); }
+.denom-50 { --denom: var(--denom-50); }
+.denom-100 { --denom: var(--denom-100); }
+
+.bundle-card {
+  position: relative;
+  overflow: hidden;
+  border-top: 4px solid var(--denom) !important;
+}
+
+/* Oversized denomination numeral, ghosted into the card like a note's
+   corner value. */
+.bundle-card::after {
+  content: attr(data-denom);
+  position: absolute;
+  top: -0.6rem;
+  right: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 6.5rem;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: var(--denom);
+  opacity: 0.09;
+  pointer-events: none;
+  font-variation-settings: 'opsz' 144;
+}
+
+.bundle-card .section-label::before {
+  background: var(--denom);
+}
+
+.denom-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--denom);
+  vertical-align: 0.05em;
 }
 
 /* ---- Toasts ---------------------------------------------------------- */
