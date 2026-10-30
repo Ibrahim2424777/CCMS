@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 
-_Last updated: 2026-10-30_
+_Last updated: 2026-10-31_
 
 ## Current Phase
 
@@ -125,6 +125,15 @@ After about 15 idle minutes, login could fail with "Unable to log in. Please try
 **Verified**: in headless Chrome against the sleeping production backend, with a local build routed through the live proxy and a fake account: the waiting screen showed for 24 seconds, the login form then appeared, and login returned the real "Invalid email or password." A simulated 429 on the login POST confirmed the request is resent with its body intact.
 
 **Testing note**: reproduce this through the proxy first. A direct request to the Render URL wakes the server and hides the bug.
+
+## Profit Rounding Rules (post-launch, 2026-10-31)
+
+Requested by the business, and these supersede the plain percentage in the master context:
+
+- **Profit ending in 5 rounds up to the next 10** (Rs. 75 -> Rs. 80, Rs. 165 -> Rs. 170), because 5-rupee coins are rarely used. It applies at both commission rates. A non-whole profit such as Rs. 82.50 (Rs. 5,500) is left as it is.
+- **Rs. 6,000 at the standard rate is a fixed Rs. 100 profit.** An Rs. 10-only Rs. 6,000 stays at 3% (Rs. 180).
+
+Both live in `calculateProfit` (`server/src/services/businessLogic.js`, mirrored for the preview in `client/src/utils/businessLogic.js`). `commission_rate` still records the tier. Saved transactions keep their stored profit, but editing one recalculates it under these rules unless it has an admin override.
 
 ## Production URLs
 

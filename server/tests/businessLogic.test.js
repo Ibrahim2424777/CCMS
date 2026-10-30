@@ -58,8 +58,37 @@ describe('calculateProfit', () => {
     expect(calculateProfit(3000, 0.03)).toBe(90);
   });
 
-  test('Rs. 7,000 mixed -> 1.5% -> Rs. 105 (master context example)', () => {
-    expect(calculateProfit(7000, 0.015)).toBe(105);
+  test.each([
+    [5000, 80], // 75
+    [7000, 110], // 105
+    [11000, 170], // 165
+    [1000, 20], // 15
+  ])('Rs. %i at 1.5%% ending in 5 rounds up to Rs. %i', (changeValue, expected) => {
+    expect(calculateProfit(changeValue, 0.015)).toBe(expected);
+  });
+
+  test.each([
+    [2000, 30],
+    [4000, 60],
+    [12000, 180],
+  ])('Rs. %i at 1.5%% already ending in 0 stays Rs. %i', (changeValue, expected) => {
+    expect(calculateProfit(changeValue, 0.015)).toBe(expected);
+  });
+
+  test('Rs. 2,500 only Rs.10 -> 3% -> Rs. 75 rounds up to Rs. 80', () => {
+    expect(calculateProfit(2500, 0.03)).toBe(80);
+  });
+
+  test('a non-whole-rupee profit is not rounded (Rs. 5,500 -> Rs. 82.50)', () => {
+    expect(calculateProfit(5500, 0.015)).toBe(82.5);
+  });
+
+  test('Rs. 6,000 at 1.5% -> fixed Rs. 100', () => {
+    expect(calculateProfit(6000, 0.015)).toBe(100);
+  });
+
+  test('Rs. 6,000 only Rs.10 keeps the 3% profit of Rs. 180', () => {
+    expect(calculateProfit(6000, 0.03)).toBe(180);
   });
 });
 

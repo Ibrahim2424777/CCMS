@@ -144,7 +144,7 @@ describe('GET /api/analytics/summary - single day (isolated historical date)', (
   test('totals, bundle distribution, and top shops match a hand-calculated known dataset', async () => {
     const agent = await staffAgent();
     await createTx(agent, shopAId, day, { bundles_10: 2 }); // 2000 @ 3% = 60
-    await createTx(agent, shopBId, day, { bundles_50: 1, bundles_100: 1 }); // 15000 @ 1.5% = 225
+    await createTx(agent, shopBId, day, { bundles_50: 1, bundles_100: 1 }); // 15000 @ 1.5% = 225, rounds up to 230
 
     const data = await getSummary(agent, { range: 'custom', from: day, to: day });
 
@@ -152,9 +152,9 @@ describe('GET /api/analytics/summary - single day (isolated historical date)', (
       transactions: 2,
       uniqueShops: 2,
       totalChange: 17000,
-      totalProfit: 285,
+      totalProfit: 290,
       avgTransaction: 8500,
-      avgProfit: 142.5,
+      avgProfit: 145,
     });
 
     const byType = Object.fromEntries(data.bundleDistribution.map((b) => [b.bundleType, b]));
@@ -166,7 +166,7 @@ describe('GET /api/analytics/summary - single day (isolated historical date)', (
     expect(data.topShops.map((s) => s.transactions)).toEqual([1, 1]);
 
     expect(data.trend.groupBy).toBe('day');
-    expect(data.trend.points).toEqual([{ period: day, profit: 285, change: 17000 }]);
+    expect(data.trend.points).toEqual([{ period: day, profit: 290, change: 17000 }]);
   });
 });
 
@@ -257,11 +257,11 @@ describe('GET /api/analytics/summary - reflects edits and deletions', () => {
 
     await agent
       .put(`/api/transactions/${created.id}`)
-      .send({ shop_id: shopAId, transaction_date: day, bundles_50: 1 }) // 5000 @ 1.5% = 75
+      .send({ shop_id: shopAId, transaction_date: day, bundles_50: 1 }) // 5000 @ 1.5% = 75, rounds up to 80
       .expect(200);
 
     const afterEdit = await getSummary(agent, { range: 'custom', from: day, to: day });
-    expect(afterEdit.totals).toMatchObject({ transactions: 1, totalChange: 5000, totalProfit: 75 });
+    expect(afterEdit.totals).toMatchObject({ transactions: 1, totalChange: 5000, totalProfit: 80 });
 
     await agent.delete(`/api/transactions/${created.id}`).expect(204);
 

@@ -93,7 +93,7 @@ describe('POST /api/transactions - authentication', () => {
 });
 
 describe('POST /api/transactions - commission rules (master context section 3)', () => {
-  test('standard rule: mixed bundles -> 1.5% (2x Rs.10 + 1x Rs.50 = Rs.7,000 -> Rs.105 profit)', async () => {
+  test('standard rule: mixed bundles -> 1.5% (2x Rs.10 + 1x Rs.50 = Rs.7,000 -> Rs.105, rounded up to Rs.110 profit)', async () => {
     const agent = await staffAgent();
     const res = trackCreated(
       await agent.post('/api/transactions').send({
@@ -108,8 +108,44 @@ describe('POST /api/transactions - commission rules (master context section 3)',
     expect(res.status).toBe(201);
     expect(Number(res.body.data.total_change_value)).toBe(7000);
     expect(Number(res.body.data.commission_rate)).toBe(0.015);
-    expect(Number(res.body.data.profit)).toBe(105);
-    expect(Number(res.body.data.amount_collected)).toBe(7105);
+    expect(Number(res.body.data.profit)).toBe(110); // 105 rounds up
+    expect(Number(res.body.data.amount_collected)).toBe(7110);
+  });
+
+  test('Rs.6,000 at the standard rate -> fixed Rs.100 profit (1x Rs.10 + 1x Rs.50)', async () => {
+    const agent = await staffAgent();
+    const res = trackCreated(
+      await agent.post('/api/transactions').send({
+        shop_id: testShopId,
+        transaction_date: '2026-08-10',
+        bundles_10: 1,
+        bundles_50: 1,
+        bundles_100: 0,
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.commission_rate)).toBe(0.015);
+    expect(Number(res.body.data.profit)).toBe(100);
+    expect(Number(res.body.data.amount_collected)).toBe(6100);
+  });
+
+  test('Rs.6,000 in only Rs.10 bundles keeps the 3% profit of Rs.180', async () => {
+    const agent = await staffAgent();
+    const res = trackCreated(
+      await agent.post('/api/transactions').send({
+        shop_id: testShopId,
+        transaction_date: '2026-08-10',
+        bundles_10: 6,
+        bundles_50: 0,
+        bundles_100: 0,
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(Number(res.body.data.commission_rate)).toBe(0.03);
+    expect(Number(res.body.data.profit)).toBe(180);
+    expect(Number(res.body.data.amount_collected)).toBe(6180);
   });
 
   test('special rule: ONLY Rs.10 bundles -> 3% (3x Rs.10 = Rs.3,000 -> Rs.90 profit)', async () => {
@@ -477,7 +513,7 @@ describe('PUT /api/transactions/:id - editing (master context section 14)', () =
         .send({ shop_id: testShopId, transaction_date: '2026-08-10', bundles_10: 2, bundles_50: 1 })
         .expect(201)
     );
-    expect(Number(created.body.data.amount_collected)).toBe(7105); // 7,000 + 1.5%
+    expect(Number(created.body.data.amount_collected)).toBe(7110); // 7,000 + 1.5% rounded up
 
     const inv10Before = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 10');
     const inv50Before = await pool.query('SELECT bundle_count FROM inventory WHERE bundle_type = 50');
@@ -876,10 +912,10 @@ describe('GET /api/transactions - search, filtering, sorting, pagination (phase 
   test('amount_desc and amount_asc sort correctly', async () => {
     const agent = await staffAgent();
     const desc = await agent.get('/api/transactions').query({ shop_id: filterShopId, sort: 'amount_desc' });
-    expect(desc.body.data.map((t) => Number(t.amount_collected))).toEqual([10150, 5075, 1030]);
+    expect(desc.body.data.map((t) => Number(t.amount_collected))).toEqual([10150, 5080, 1030]);
 
     const asc = await agent.get('/api/transactions').query({ shop_id: filterShopId, sort: 'amount_asc' });
-    expect(asc.body.data.map((t) => Number(t.amount_collected))).toEqual([1030, 5075, 10150]);
+    expect(asc.body.data.map((t) => Number(t.amount_collected))).toEqual([1030, 5080, 10150]);
   });
 
   test('pagination: pageSize and page correctly slice results, with accurate totals', async () => {

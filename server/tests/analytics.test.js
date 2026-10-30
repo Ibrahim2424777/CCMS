@@ -94,7 +94,7 @@ describe('GET /api/analytics/dashboard - today/week/month figures (day-of-week/m
 
     // 1000 @ 3% (only Rs.10) = 30 profit
     await createTx(agent, today, { bundles_10: 1 });
-    // 5000 @ 1.5% (only Rs.50) = 75 profit
+    // 5000 @ 1.5% (only Rs.50) = 75, rounds up to 80 profit
     await createTx(agent, weekStart, { bundles_50: 1 });
     // 10000 @ 1.5% (only Rs.100) = 150 profit
     await createTx(agent, monthStart, { bundles_100: 1 });
@@ -103,7 +103,7 @@ describe('GET /api/analytics/dashboard - today/week/month figures (day-of-week/m
 
     const fixtures = [
       { date: today, change: 1000, profit: 30 },
-      { date: weekStart, change: 5000, profit: 75 },
+      { date: weekStart, change: 5000, profit: 80 },
       { date: monthStart, change: 10000, profit: 150 },
       { date: outsideDate, change: 5000, profit: 150 },
     ];
@@ -187,12 +187,12 @@ describe('GET /api/analytics/dashboard - reflects the full transaction lifecycle
     // Edit replaces the transaction's contribution - it must not be additive.
     await agent
       .put(`/api/transactions/${created.id}`)
-      .send({ shop_id: testShopId, transaction_date: today, bundles_50: 1 }) // 5000 @ 1.5% = 75
+      .send({ shop_id: testShopId, transaction_date: today, bundles_50: 1 }) // 5000 @ 1.5% = 75, rounds up to 80
       .expect(200);
 
     const afterEdit = (await agent.get('/api/analytics/dashboard')).body.data;
     expect(afterEdit.today.change - beforeCreate.today.change).toBe(5000);
-    expect(afterEdit.today.profit - beforeCreate.today.profit).toBe(75);
+    expect(afterEdit.today.profit - beforeCreate.today.profit).toBe(80);
     expect(afterEdit.today.transactions - beforeCreate.today.transactions).toBe(1);
 
     await agent.delete(`/api/transactions/${created.id}`).expect(204);
