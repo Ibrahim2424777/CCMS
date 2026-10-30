@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 
-_Last updated: 2026-08-25_
+_Last updated: 2026-10-30_
 
 ## Current Phase
 
@@ -115,6 +115,16 @@ The original `SameSite=None; Secure` cookie fix (see Known Issues below) worked 
 **The real fix**: `client/functions/api/[[path]].js`, a Cloudflare Pages Function that proxies every `/api/*` request server-side to the Render backend. The browser now only ever talks to one origin (`*.pages.dev`) for both the page and the API, so the session cookie is an ordinary first-party cookie in every browser — no `SameSite`/third-party-cookie special-casing involved at all. `VITE_API_BASE_URL` changed from the backend's absolute URL to a relative `/api` path so the frontend calls through the proxy instead of the backend directly. `CORS_ORIGIN` on Render is kept as defense-in-depth for anyone hitting the Render URL directly, but the actual browser traffic through the proxy was never subject to CORS in the first place (a same-origin browser request isn't, and the proxy's own server-to-server call to Render isn't either — CORS is a browser enforcement mechanism, not a network-level restriction).
 
 **Verified**: `/api/health` returns the real backend response when hit through the pages.dev URL (confirming the proxy forwards correctly); a full login → dashboard → logout cycle confirmed working through the proxied URL.
+
+## Sleeping-Server Login Fix (post-launch, 2026-10-30)
+
+After about 15 idle minutes, login could fail with "Unable to log in. Please try again." and retrying never helped. While the Render free backend sleeps, Render answers requests arriving through the Cloudflare proxy with an instant `429` (response header `x-render-routing: hibernate-rate-limited`) instead of waking it, so the request never reaches the app and the server stays asleep. A request sent straight to the Render URL does wake it, in about 25 seconds. The likely trigger is shared Cloudflare outbound IPs, but that part is unconfirmed. Earlier incidents only cleared because a direct request made during diagnosis woke the server.
+
+**The fix**: `client/src/api/serverWake.js`, used by the axios interceptor in `client/src/api/client.js`. A 429 with no JSON error body (the app's own rate limiter always sends one) means the request never reached the app, so the client pings the Render URL directly from the visitor's browser, polls `/api/health` through the proxy until it answers (2-minute limit), and resends the original request. `ServerWakingScreen` covers the app meanwhile. Only that 429 is resent automatically, because the app never saw the request, so nothing can be applied twice.
+
+**Verified**: in headless Chrome against the sleeping production backend, with a local build routed through the live proxy and a fake account: the waiting screen showed for 24 seconds, the login form then appeared, and login returned the real "Invalid email or password." A simulated 429 on the login POST confirmed the request is resent with its body intact.
+
+**Testing note**: reproduce this through the proxy first. A direct request to the Render URL wakes the server and hides the bug.
 
 ## Production URLs
 

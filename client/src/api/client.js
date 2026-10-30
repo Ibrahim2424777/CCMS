@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isHibernationResponse, wakeServer } from './serverWake';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -20,7 +21,15 @@ export function setUnauthorizedHandler(handler) {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    // A request bounced because the backend is asleep never reached the app,
+    // so resending it once the server is up can't apply anything twice.
+    if (isHibernationResponse(error.response) && error.config && !error.config.retriedAfterWake) {
+      error.config.retriedAfterWake = true;
+      const awake = await wakeServer(`${API_BASE_URL}/health`);
+      if (awake) return apiClient(error.config);
+    }
+
     const status = error.response?.status;
     const url = error.config?.url || '';
     const isAuthBootstrapCall = url.includes('/auth/login') || url.includes('/auth/me');

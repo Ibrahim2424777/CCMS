@@ -84,6 +84,30 @@
   animation: rise-in 0.6s 0.35s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
 }
 
+/* ---- Server waking screen ------------------------------------------- */
+
+.server-waking {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.server-waking-title {
+  font-size: clamp(2rem, 1.4rem + 2.5vw, 3rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #fff;
+  font-variation-settings: 'opsz' 144, 'SOFT' 40;
+}
+
+.server-waking-note {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 250;
+  font-size: 1.15rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
 /* ---- Navigation ---------------------------------------------------- */
 
 .app-navbar {
